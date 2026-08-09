@@ -1,0 +1,80 @@
+/**
+ * WP-EMail front end.
+ *
+ * Everything is scoped under the .wp-email root class, and nothing here sets
+ * font-family, font-size or colour: the form is the theme's typography with a
+ * few layout rules on top. There is no second mirrored stylesheet -- the rules
+ * below use logical properties, so one file serves both text directions.
+ *
+ * The plugin paints no surface of its own, so there is nothing for
+ * prefers-color-scheme to answer; the one animation answers
+ * prefers-reduced-motion at the bottom of the file.
+ */
+
+.wp-email p {
+	text-align: start;
+}
+
+.wp-email label,
+.wp-email .wp-email-required {
+	font-weight: 700;
+}
+
+.wp-email .wp-email-button,
+.wp-email .wp-email-subtitle,
+.wp-email .wp-email-loading {
+	text-align: center;
+}
+
+/*
+ * The label used to be padded with five spaces either side, inside the
+ * translated string -- so the button was only that wide in English, and a
+ * translator had no way to see the padding, let alone reproduce it.
+ */
+.wp-email #wp-email-submit {
+	padding-inline: 2em;
+}
+
+.wp-email .wp-email-loading {
+	display: none;
+}
+
+.wp-email-popup {
+	padding-block: 1em 0;
+	padding-inline: 1em;
+}
+
+.wp-email-popup-close {
+	padding-block-start: 20px;
+	text-align: center;
+}
+
+/* The envelope glyph, drawn inline by WP_Email_Link::icon(). */
+.wp-email-icon {
+	vertical-align: text-bottom;
+}
+
+/* Replaces images/loading.gif: no request, and it takes the theme's colour. */
+.wp-email-spinner {
+	display: inline-block;
+	width: 1em;
+	height: 1em;
+	vertical-align: -0.125em;
+	border: 2px solid currentColor;
+	border-block-start-color: transparent;
+	border-radius: 50%;
+	animation: wp-email-spin 0.8s linear infinite;
+}
+
+@keyframes wp-email-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wp-email-spinner {
+		animation: none;
+		opacity: 0.6;
+	}
+}
