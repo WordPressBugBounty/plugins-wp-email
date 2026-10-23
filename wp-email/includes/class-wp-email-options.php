@@ -353,12 +353,45 @@ class WP_Email_Options {
 	/**
 	 * Store the settings.
 	 *
+	 * `update_option()` declines to write a value equal to the one `get_option()`
+	 * would return, and `register_setting()` is passed a `default`, which installs
+	 * a `default_option_wp_email_options` filter answering with the shipped
+	 * defaults for a row that does not exist. Core's `add_option()` fallback sits
+	 * immediately below that comparison and is unreachable once the two compare
+	 * equal. So a migration whose result happens to equal the defaults -- the
+	 * commonest install there is -- writes nothing at all, and the markers are
+	 * stamped complete either way, so the upgrade can never run again.
+	 *
+	 * It does not stop at one lost write. migrate_legacy_rows() and
+	 * migrate_link_template() are two writes that have to compose, the second
+	 * re-reading the row the first stored: when the first vanishes the second
+	 * finds no row, returns without doing anything, and the eighteen legacy rows
+	 * have been deleted regardless.
+	 *
+	 * It was held off by nothing but the order two callbacks were added in:
+	 * maybe_upgrade() is hooked to `admin_init` before WP_Email_Settings hooks
+	 * register() to it at the same priority, so the upgrade went first.
+	 * Reordering those two, or any third-party `default_option_*` filter, reaches
+	 * it silently.
+	 *
+	 * Passing an explicit default to `get_option()` defeats the registered one --
+	 * `filter_default_option()` returns early when a default was passed -- which
+	 * is what lets an absent row be told apart from a defaulted one and added
+	 * outright. `add_option()` runs the sanitize callback exactly as
+	 * `update_option()` does, so nothing else about the stored value changes.
+	 *
 	 * @param array $options Settings to store.
 	 *
 	 * @return void
 	 */
 	public static function update( array $options ) {
 		self::$cache = null;
+
+		if ( false === get_option( self::OPTION, false ) ) {
+			add_option( self::OPTION, $options );
+
+			return;
+		}
 
 		update_option( self::OPTION, $options );
 	}
@@ -721,10 +754,11 @@ class WP_Email_Options {
 	protected static function synthesise_link_html( array $link ) {
 		$style = isset( $link['style'] ) ? (int) $link['style'] : 1;
 
-		// Already writing its own template: nothing here can improve on it, and
-		// rewriting it would throw away markup somebody typed.
+		// Already writing its own template: the markup somebody typed is kept as
+		// typed, save for the one placeholder that cannot survive the upgrade
+		// intact. See rewrite_icon_placeholder().
 		if ( 4 === $style && isset( $link['html'] ) ) {
-			return (string) $link['html'];
+			return self::rewrite_icon_placeholder( (string) $link['html'] );
 		}
 
 		$post_text = isset( $link['post_text'] ) ? (string) $link['post_text'] : '';
@@ -736,6 +770,50 @@ class WP_Email_Options {
 		$text = $stock ? self::default_link_text() : $post_text;
 
 		return self::compose_link_html( $text, 3 !== $style, 2 !== $style );
+	}
+
+	/**
+	 * Rewrite the retired icon URL placeholder in a hand-written template.
+	 *
+	 * %EMAIL_ICON_URL% stood for the URL of whichever bundled envelope GIF the
+	 * E-Mail Icon setting named. There is one inline SVG now and no URL to point
+	 * at, so the placeholder has nothing left to expand to.
+	 *
+	 * This is the one exception to leaving a custom template exactly as typed,
+	 * and it earns the exception by being the only retired placeholder whose old
+	 * usage cannot survive: it lived inside `<img src="...">`, and the plugin
+	 * cannot leave that alone -- an unrewritten one draws a broken image, and
+	 * substituting the glyph into the attribute would produce
+	 * `<img src="<svg ...>">`, which is worse than either. So the whole element
+	 * goes, replaced by %EMAIL_ICON%, which draws the glyph itself.
+	 *
+	 * A bare placeholder outside an `<img>` is simply renamed; there the glyph
+	 * drops straight in.
+	 *
+	 * %EMAIL_TEXT% is deliberately NOT treated this way. It has a replacement a
+	 * reader has to choose between -- the wording now lives in the template, and
+	 * only the site knows what it should say -- so it is left in the markup to be
+	 * seen and edited, which is how an install that needs attention says so.
+	 *
+	 * @param string $html The stored template.
+	 *
+	 * @return string
+	 */
+	protected static function rewrite_icon_placeholder( $html ) {
+		$html = (string) $html;
+
+		if ( false === strpos( $html, '%EMAIL_ICON_URL%' ) ) {
+			return $html;
+		}
+
+		$replaced = preg_replace( '#<img[^>]*%EMAIL_ICON_URL%[^>]*>#i', '%EMAIL_ICON%', $html );
+
+		// preg_replace() returns null on failure, which would blank the template.
+		if ( null !== $replaced ) {
+			$html = $replaced;
+		}
+
+		return str_replace( '%EMAIL_ICON_URL%', '%EMAIL_ICON%', $html );
 	}
 
 	/**
